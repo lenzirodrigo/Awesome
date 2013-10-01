@@ -1,8 +1,8 @@
 --[[                                      ]]--
---                                          -
+--                                          --
 --   Multicolor Awesome WM 3.5.+ config     --
 --        github.com/copycat-killer         --
---                                          -
+--                                          --
 --[[                                      ]]--
 
 --[[
@@ -14,6 +14,7 @@ ooooo         o8o   .o8                                    o8o
  888       o  888   888   888  888     d8(  888   888      888  888    .o o.  )88b 
 o888ooooood8 o888o  `Y8bod8P' d888b    `Y888""8o d888b    o888o `Y8bod8P' 8""888P' 
 --]]
+
 gears 	        = require("gears")
 awful           = require("awful")
 awful.rules     = require("awful.rules")
@@ -24,6 +25,38 @@ naughty         = require("naughty")
 vicious         = require("vicious")
 --layouts         = require("layouts")
 string          = require("string")
+
+-- Simple function to load additional LUA files from rc/.
+function loadrc(name, mod)
+   local success
+   local result
+
+   -- Which file? In rc/ or in lib/?
+   local path = awful.util.getdir("config") .. "/" ..
+      (mod and "lib" or "rc") ..
+      "/" .. name .. ".lua"
+
+   -- If the module is already loaded, don't load it again
+   if mod and package.loaded[mod] then return package.loaded[mod] end
+
+   -- Execute the RC/module file
+   success, result = pcall(function() return dofile(path) end)
+   if not success then
+      naughty.notify({ title = "Error while loading an RC file",
+           text = "When loading `" .. name ..
+        "`, got the following error:\n" .. result,
+           preset = naughty.config.presets.critical
+         })
+      return print("E: error loading RC file '" .. name .. "': " .. result)
+   end
+
+   -- Is it a module?
+   if mod then
+      return package.loaded[mod]
+   end
+
+   return result
+end
 
 --[[
       .o.                       .                          .                          .   
@@ -52,38 +85,8 @@ run_once("unclutter -idle 10")
 
 os.setlocale(os.getenv("LANG"))
 
---[[
-oooooooooooo                                               
-`888'     `8                                               
- 888         oooo d8b oooo d8b  .ooooo.  oooo d8b  .oooo.o 
- 888oooo8    `888""8P `888""8P d88' `88b `888""8P d88(  "8 
- 888    "     888      888     888   888  888     `"Y88b.  
- 888       o  888      888     888   888  888     o.  )88b 
-o888ooooood8 d888b    d888b    `Y8bod8P' d888b    8""888P' 
---]]                                                                           
+loadrc("errors")   -- errors and debug stuff
 
--- Check if awesome encountered an error during startup and fell back to
--- another config (This code will only ever execute for the fallback config)
-if awesome.startup_errors then
-    naughty.notify({ preset = naughty.config.presets.critical,
-                     title = "Oops, there were errors during startup!",
-                     text = awesome.startup_errors })
-end
-
--- Handle runtime errors after startup
-do
-    in_error = false
-    awesome.connect_signal("debug::error", function (err)
-        -- Make sure we don't go into an endless error loop
-        if in_error then return end
-        in_error = true
-
-        naughty.notify({ preset = naughty.config.presets.critical,
-                         title = "Oops, an error happened!",
-                         text = err })
-        in_error = false
-    end)
-end
 
 -- }}}
 --[[
@@ -654,7 +657,7 @@ globalkeys = awful.util.table.join(
     awful.key({ modkey,        }, "s",      function () awful.util.spawn( "gui_editor") end),
     awful.key({ modkey, 	     }, "t", 	    function () awful.util.spawn( "gnome-terminal", false ) end),
     -- awful.key({ modkey,        }, "d", 	    function () awful.util.spawn( "spacefm", false ) end),
-    
+
     -- Prompt
     awful.key({ modkey }, "r", function () mypromptbox[mouse.screen]:run() end),
 
@@ -845,152 +848,3 @@ end)
 client.connect_signal("focus", function(c) c.border_color = beautiful.border_focus end)
 client.connect_signal("unfocus", function(c) c.border_color = beautiful.border_normal end)
 
--- }}}
-
---[[
-ooo        ooooo             oooo      .    o8o             oooo            
-`88.       .888'             `888    .o8    `"'             `888            
- 888b     d'888  oooo  oooo   888  .o888oo oooo  oo.ooooo.   888   .ooooo.  
- 8 Y88. .P  888  `888  `888   888    888   `888   888' `88b  888  d88' `88b 
- 8  `888'   888   888   888   888    888    888   888   888  888  888ooo888 
- 8    Y     888   888   888   888    888 .  888   888   888  888  888    .o 
-o8o        o888o  `V88V"V8P' o888o   "888" o888o  888bod8P' o888o `Y8bod8P' 
-                                                  888                       
-                                                 o888o                      
-                                                                   
- .oooo.o  .ooooo.  oooo d8b  .ooooo.   .ooooo.  ooo. .oo.    .oooo.o 
-d88(  "8 d88' `"Y8 `888""8P d88' `88b d88' `88b `888P"Y88b  d88(  "8 
-`"Y88b.  888        888     888ooo888 888ooo888  888   888  `"Y88b.  
-o.  )88b 888   .o8  888     888    .o 888    .o  888   888  o.  )88b 
-8""888P' `Y8bod8P' d888b    `Y8bod8P' `Y8bod8P' o888o o888o 8""888P' 
-                                                                              
-                                            
---]]
--- Multiple screens
-
--- Get active outputs
-local function outputs()
-  local outputs = {}
-  local xrandr = io.popen("xrandr -q")
-  if xrandr then
-    for line in xrandr:lines() do
-      output = line:match("^([%w-]+) connected ")
-      if output then
-        outputs[#outputs + 1] = output
-      end
-    end
-    xrandr:close()
-  end
-
-  return outputs
-end
-
-local function arrange(out)
-  -- We need to enumerate all the way to combinate output. We assume
-  -- we want only an horizontal layout.
-  local choices  = {}
-  local previous = { {} }
-  for i = 1, #out do
-    -- Find all permutation of length `i`: we take the permutation
-    -- of length `i-1` and for each of them, we create new
-    -- permutations by adding each output at the end of it if it is
-    -- not already present.
-    local new = {}
-    for _, p in pairs(previous) do
-      for _, o in pairs(out) do
-        if not awful.util.table.hasitem(p, o) then
-          new[#new + 1] = awful.util.table.join(p, {o})
-        end
-      end
-    end
-    choices = awful.util.table.join(choices, new)
-    previous = new
-  end
-
-  return choices
-end
-
--- Build available choices
-local function menu()
-  local menu = {}
-  local out = outputs()
-  local choices = arrange(out)
-
-  for _, choice in pairs(choices) do
-    local cmd = "xrandr"
-    -- Enabled outputs
-    for i, o in pairs(choice) do
-      cmd = cmd .. " --output " .. o .. " --auto"
-      if i > 1 then
-        cmd = cmd .. " --right-of " .. choice[i-1]
-      end
-    end
-    -- Disabled outputs
-    for _, o in pairs(out) do
-      if not awful.util.table.hasitem(choice, o) then
-        cmd = cmd .. " --output " .. o .. " --off"
-      end
-    end
-
-    local label = ""
-    if #choice == 1 then
-      label = 'Only <span weight="bold">' .. choice[1] .. '</span>'
-    else
-      for i, o in pairs(choice) do
-        if i > 1 then label = label .. " + " end
-          label = label .. '<span weight="bold">' .. o .. '</span>'
-        end
-    end
-
-    menu[#menu + 1] = { label, cmd, "/usr/share/icons/gnome/32x32/devices/display.png"}
-  end
-
-  return menu
-end
-
--- Display xrandr notifications from choices
-local state = { iterator = nil,
-                timer = nil,
-                cid = nil }
-local function xrandr()
-   -- Stop any previous timer
-   if state.timer then
-      state.timer:stop()
-      state.timer = nil
-   end
-
-   -- Build the list of choices
-   if not state.iterator then
-      state.iterator = awful.util.table.iterate(menu(),
-          function() return true end)
-   end
-
-   -- Select one and display the appropriate notification
-   local next  = state.iterator()
-   local label, action, icon
-   if not next then
-      label, icon = "Keep the current configuration", "/usr/share/icons/gnome/32x32/devices/display.png"
-      state.iterator = nil
-   else
-      label, action, icon = unpack(next)
-   end
-   state.cid = naughty.notify({ text = label,
-                                icon = icon,
-                                timeout = 4,
-                                screen = mouse.screen, -- Important, not all screens may be visible
-                                font = "Free Sans 18",
-                                replaces_id = state.cid }).id
-
-   -- Setup the timer
-   state.timer = timer { timeout = 4 }
-   state.timer:connect_signal("timeout",
-                              function()
-                                state.timer:stop()
-                                state.timer = nil
-                                state.iterator = nil
-                                if action then
-                                  awful.util.spawn(action, false)
-                                end
-                              end)
-   state.timer:start()
-end
